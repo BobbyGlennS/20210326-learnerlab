@@ -1,0 +1,387 @@
+---
+title: 'Are Roger and Serena the all-time best tennis players?'
+author: 'Your Teacher Today: Bobby Stuijfzand'
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Before we begin
+
+### Some steps to follow if you want to code along
+
+1. Make sure RStudio is open
+2. Create a new RStudio project in a new directory (name does not matter)
+3. Create a folder in the RStudio project directory called `data`
+4. Inside the main folder (not inside `data`), add the learner Rmarkdown file of this learner lab. You can find it here:   
+
+On top of what you have installed for FDS, there are some additional packages that you need.
+Don't forget to run the following chunk in the console before we begin.
+
+```{r eval=FALSE}
+install.packages("here")
+install.packages("vroom")
+```
+
+### Beginning our R code
+
+Load packages
+
+```{r}
+library(here)
+library(tidyverse)
+library(vroom)
+```
+
+## Defining the question
+
+In this webinar we will use data from the WTP and ATP to answer the question:
+
+***Who are the best tennis players of all-time?***
+
+### The scope
+
+We will limit this question to each gender separately - we are not going to compare between genders.
+
+We will further look only at who won the grand slam single tournaments.
+
+
+### Sub questions
+
+We will use two questions to get some insight into our main question.
+
+- Who won the most grand slam tournaments (single player)?
+- Who won the most grand slam tournaments consecutively?
+
+After we have found answer to these questions, we can combine this information to give a comprehensive answer to our main question.
+
+## The data
+
+### Credit where credit is due
+
+The dataset we will be using is carefully assembled by [Jeff Sackmann](https://github.com/JeffSackmann) and is freely available on the internet in the form of github repositories, links for which you can find here:
+
+- [https://github.com/JeffSackmann/tennis_atp](https://github.com/JeffSackmann/tennis_atp)
+- [https://github.com/JeffSackmann/tennis_wta](https://github.com/JeffSackmann/tennis_wta)
+
+To code along with this webinar you will have to download these repositories to your laptop and store them as folders under the `data` folder in your RStudio project. I will show you how to do this in the webinar.
+
+### Exploring the data
+
+Have a look at the repositories.
+
+### Load the data
+
+How do you load many files at once?
+
+#### Get the filenames
+
+We start with listing the files we are interested in with `list.files()`.
+
+```{r}
+data_paths_wta <- list.files(
+  path = here("data", "tennis_wta-master"), 
+  pattern = "^wta_matches_\\d.+csv"
+)
+
+data_paths_atp <- list.files(
+  path = here("data", "tennis_atp-master"), 
+  pattern = "^atp_matches_\\d.+csv"
+)
+```
+
+#### Get the data itself
+
+We will use `vroom()` to load in many datafiles with the same datastructure at once.
+
+```{r}
+data_wta <- vroom::vroom(
+  here::here("data", "tennis_wta-master", data_paths_wta), 
+  id = "file"
+) 
+
+data_atp <- vroom::vroom(
+  here::here("data", "tennis_atp-master", data_paths_atp), 
+  id = "file"
+) 
+```
+
+Let's now admire our data:
+
+```{r}
+head(data_wta) %>% knitr::kable()
+```
+
+It's a bit wide thanks to the `file` column's content, but using `kable()` makes that we still have a nice format to explore this data, though I wouldn't suggest keeping it this way in a final report.
+
+--- 
+
+#### EXERCISE
+
+Let's look at some columns we might be interested in using `select()`.
+What columns might you include in your report to communicate a general sense about this data?
+
+```{r}
+data_wta %>% 
+  sample_n(20) %>% 
+  select( ####fill in some column names here#### ) %>% 
+  knitr::kable()
+```
+---
+
+## Preparing the data
+
+### Creating the relevant subset 
+
+We want to only keep Grand Slam data, and only data on the final round.
+
+---
+
+#### EXERCISE 
+
+Using the columns `tourney_level` and `round`, can you work out how to filter the data so that we only keep a subset that satisfies the conditions above?
+
+```{r, cache=TRUE}
+data_wta_g_winners <- data_wta %>% 
+  filter(tourney_level == .., round == ..)
+
+data_atp_g_winners <- data_atp %>% 
+  filter(tourney_level == .., round == ..)
+```
+
+---
+
+### Adding dates
+
+Change the `tourney_date` column into a date type and sort our data.
+
+```{r}
+data_wta_g_winners <- data_wta_g_winners %>% 
+  mutate(date = lubridate::ymd(tourney_date)) %>% 
+  arrange(date)
+
+data_atp_g_winners <- data_atp_g_winners %>% 
+  mutate(date = lubridate::ymd(tourney_date)) %>% 
+  arrange(date)
+```
+
+Our data is now ready.
+
+## First question: Who won the most grand slam tournaments (single player)?
+
+---
+
+#### EXERCISE
+
+What code would you use to get the top 5 winners for each gender?
+
+```{r}
+data_wta_g_winners %>% 
+  count(winner_name, sort = TRUE) %>% 
+  top_n(n, n =) %>% 
+  knitr::kable(caption = "Top 5 Grand Slam Women",
+               col.names = c("Athlete", "*n*"))
+```
+
+```{r}
+data_atp_g_winners %>% 
+  count(winner_name, sort = TRUE) %>% 
+  top_n(n, n =) %>% 
+  knitr::kable(caption = "Top 5 Grand Slam Men",
+               col.names = c("Athlete", "*n*"))
+```
+
+---
+
+## Second question: Who won the most grand slam tournaments consecutively?
+
+We need to keep the following things in mind:
+
+- An athlete can win once, then lose, and then win again. We don't want these two wins to count towards the same streak.
+- An athlete can have multiple streaks, so the answer will not be as unambiguous as in the previous part.
+
+I will demonstrate an approach in steps for the women.
+Then you can use this as an exercise to solve it for the men.
+
+### Step 1: Number each game consecutively
+
+We will use `row_number()` for this.
+
+```{r}
+data_wta_g_cons_winners <- data_wta_g_winners %>% 
+  mutate(game_id = row_number()) 
+```
+
+We now have a number for each game:
+
+```{r eval=FALSE}
+data_wta_g_cons_winners %>% 
+  head(10) %>% 
+  select(tourney_name, date, game_id) %>% 
+  View()
+```
+
+### Step 2: Group our data by athlete
+
+```{r}
+data_wta_g_cons_winners <- data_wta_g_cons_winners %>% 
+  group_by(winner_name)
+```
+
+Before we continue, let's have a look at the data.
+
+```{r eval=FALSE}
+data_wta_g_cons_winners %>% 
+  arrange(winner_name) %>% 
+  select(winner_name, game_id, date) %>% 
+  View()
+```
+
+### Step 3: Find the id of the previous game_id
+
+We can use `lag()` to find the previous `game_id` an athlete has won.
+We use `default = -99` so that if there is no previous game, we still have a value to work with.
+
+```{r}
+data_wta_g_cons_winners <- data_wta_g_cons_winners %>% 
+  mutate(previous_game = lag(game_id, default = -99))
+```
+
+Let's examine the data again:
+
+```{r eval=FALSE}
+data_wta_g_cons_winners %>% 
+  arrange(winner_name) %>% 
+  select(winner_name, game_id, previous_game, date) %>% 
+  View()
+```
+
+### Step 4: Is the current id the start of something new?
+
+```{r}
+data_wta_g_cons_winners <- data_wta_g_cons_winners %>% 
+  mutate(streak_begin = game_id - previous_game != 1)
+```
+
+Let's examine the data again:
+
+```{r eval=FALSE}
+data_wta_g_cons_winners %>% 
+  arrange(winner_name) %>% 
+  select(winner_name, game_id, previous_game, streak_begin) %>% 
+  View()
+```
+
+### Intermezzo: the cumulative sum
+
+For the next step, we are going to process the `streak_begin` variable in a way that we will get a `streak_id` for each separate streak.
+In order to do so we can use a function called `cumsum()` which calculates the cumulative sum for a variable.
+
+What is the cumulative sum?
+
+Let's demonstrate.
+
+We have a vector containing the values `1, 2, 3, 4`.
+
+Calculating the cumulative sum gives:
+
+```{r}
+cumsum(c(1,2,3,4))
+```
+
+The cumulative sum returns a vector of the same length, that contains for each element the sum of the original vector *up until that point*.
+
+How is this useful?
+
+Consider that `TRUE` and `FALSE` are represented by `1` and `0` in R.
+A cumulative sum on such a logical vector would look like this:
+
+```{r}
+cumsum(c(FALSE, TRUE, FALSE, FALSE, TRUE))
+```
+
+You can see that only once a `TRUE` appears will the cumulative sum increment.
+
+Now recall that in our `streak_begin` variable, we have a `TRUE` for every start of a streak.
+
+Let's look at the data again:
+
+```{r eval=FALSE}
+data_wta_g_cons_winners %>% 
+  arrange(winner_name) %>% 
+  select(winner_name, game_id, previous_game, streak_begin) %>% 
+  View()
+```
+
+### Step 5: Get an id for each streak
+
+If we run `cumsum()` on `streak_begin`, what we will get is a number that increments with every new beginning.
+
+```{r}
+data_wta_g_cons_winners <- data_wta_g_cons_winners %>% 
+  mutate(streak_id = cumsum(streak_begin))
+```
+
+Let's admire our result.
+
+```{r eval=FALSE}
+data_wta_g_cons_winners %>% 
+  arrange(winner_name) %>% 
+  select(winner_name, game_id, previous_game, streak_begin, streak_id) %>% 
+  View()
+```
+
+### Step 6: Let's count the streaks!
+
+Now all that's left is counting up the streak ids to understand how many rows belonged to each streak, and therefore, how long each streak was!
+
+```{r}
+data_wta_g_cons_winners_result <- data_wta_g_cons_winners %>% 
+  count(streak_id, sort=TRUE)
+```
+
+Let's admire the result
+
+```{r}
+data_wta_g_cons_winners_result %>% 
+  head(20) %>% 
+  knitr::kable()
+```
+
+As we stored the results in a separate tibble, We can now also go back to the original tibble to examine some individual streaks.
+
+For example Serena Williams longest streak:
+
+```{r}
+data_wta_g_cons_winners %>% 
+  filter(streak_id == 13) %>% 
+  select(winner_name, date, tourney_name)
+```
+
+## And now for the men...
+
+---
+
+#### EXERCISE: 
+
+Can you answer the second question for the men?
+
+---
+
+## Open era tennis results
+
+---
+
+#### BONUS:
+
+What would the results look like if we account for the switch to allowing professionals to compete in grand slams?
+
+Hint: the open era, as it was called, started in 1968.
+
+---
