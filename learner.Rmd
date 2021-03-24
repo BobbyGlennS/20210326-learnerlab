@@ -19,7 +19,7 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 1. Make sure RStudio is open
 2. Create a new RStudio project in a new directory (name does not matter)
 3. Create a folder in the RStudio project directory called `data`
-4. Inside the main folder (not inside `data`), add the learner Rmarkdown file of this learner lab. You can find it here:   
+4. Inside the main folder (not inside `data`), add the learner Rmarkdown file of this learner lab (`learner.Rmd`). You can find it here: [https://github.com/BobbyGlennS/20210326-learnerlab](https://github.com/BobbyGlennS/20210326-learnerlab).
 
 On top of what you have installed for FDS, there are some additional packages that you need.
 Don't forget to run the following chunk in the console before we begin.
